@@ -676,7 +676,7 @@ function renderSLAList(items) {
                     </div>
                     <div class="sla-info">
                         <div class="sla-title">${item.title} ${isSlaPaused(item.ticket_status) ? '<span class="badge bg-warning text-dark ms-2" style="font-size: 0.6rem; vertical-align: middle;">PAUSADO</span>' : ''}</div>
-                        <div class="sla-subtitle">Chamado ${item.ticket}</div>
+                        <div class="sla-subtitle">Chamado ${item.ticket} • <span style="color: var(--primary); font-weight: 600;">${escHtml(item.sla_name)}</span></div>
                     </div>
                     <div class="sla-countdown">
                         <div class="sla-time ${item.status}" data-deadline="${item.deadline}" data-paused="${isSlaPaused(item.ticket_status)}">--:--</div>

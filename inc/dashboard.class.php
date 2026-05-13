@@ -27,11 +27,11 @@ class PluginDashglpiDashboard
         $pendentes   = self::countTickets($DB, $entityCriteria, ['status' => 4]);
         $finalizados = self::countTickets($DB, $entityCriteria, ['status' => [5, 6]]);
 
-        // SLA vencido: não finalizados com time_to_resolve no passado
-        $slaVencido = self::countTickets($DB, $entityCriteria, [
+        // SLA Crítico: não finalizados que vencem em menos de 1 hora (incluindo já vencidos)
+        $slaCritico = self::countTickets($DB, $entityCriteria, [
             'NOT' => ['status' => [5, 6]],
             ['NOT' => ['time_to_resolve' => null]],
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` < NOW()'),
+            new QueryExpression('`glpi_tickets`.`time_to_resolve` < NOW() + INTERVAL 1 HOUR'),
         ]);
 
         $taxa = ($total > 0) ? round(($finalizados / $total) * 100) : 0;
@@ -160,7 +160,7 @@ class PluginDashglpiDashboard
                 'total'       => (int) $total,
                 'andamento'   => (int) $andamento,
                 'taxa'        => $taxa,
-                'sla'         => (int) $slaVencido,
+                'sla'         => (int) $slaCritico,
                 'tempo_medio' => $tempoMedioHoras,
                 'reabertos'   => (int) $reabertos,
             ],
@@ -308,17 +308,17 @@ class PluginDashglpiDashboard
 
         $entityCriteria = getEntitiesRestrictCriteria('glpi_tickets');
 
-        // Categorias de SLA
+        // Categorias de SLA (Alinhadas com a lógica visual do frontend)
         $critical = self::countTickets($DB, $entityCriteria, [
             'NOT' => ['status' => [5, 6]],
             ['NOT' => ['time_to_resolve' => null]],
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` <= NOW()'),
+            new QueryExpression('`glpi_tickets`.`time_to_resolve` < NOW() + INTERVAL 1 HOUR'),
         ]);
 
         $warning = self::countTickets($DB, $entityCriteria, [
             'NOT' => ['status' => [5, 6]],
             ['NOT' => ['time_to_resolve' => null]],
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` > NOW()'),
+            new QueryExpression('`glpi_tickets`.`time_to_resolve` >= NOW() + INTERVAL 1 HOUR'),
             new QueryExpression('`glpi_tickets`.`time_to_resolve` <= NOW() + INTERVAL 4 HOUR'),
         ]);
 
@@ -330,13 +330,21 @@ class PluginDashglpiDashboard
 
         // Lista de próximos ao vencimento
         $iterator = $DB->request([
-            'SELECT' => ['id', 'name', 'time_to_resolve', 'status'],
-            'FROM'   => 'glpi_tickets',
+            'SELECT' => [
+                't.id', 't.name', 't.time_to_resolve', 't.status',
+                new QueryExpression("IFNULL(`s`.`name`, 'Sem SLA') AS `sla_name`")
+            ],
+            'FROM'   => 'glpi_tickets AS t',
+            'LEFT JOIN' => [
+                'glpi_slas AS s' => [
+                    'ON' => ['s' => 'id', 't' => 'slas_id_ttr']
+                ]
+            ],
             'WHERE'  => array_merge([
-                'NOT' => ['status' => [5, 6]],
-                ['NOT' => ['time_to_resolve' => null]],
-            ], $entityCriteria),
-            'ORDER' => ['time_to_resolve ASC'],
+                'NOT' => ['t.status' => [5, 6]],
+                ['NOT' => ['t.time_to_resolve' => null]],
+            ], getEntitiesRestrictCriteria('t')),
+            'ORDER' => ['t.time_to_resolve ASC'],
             'LIMIT' => 10,
         ]);
 
@@ -356,7 +364,8 @@ class PluginDashglpiDashboard
                 'ticket'        => '#' . $row['id'],
                 'deadline'      => strtotime($row['time_to_resolve']) * 1000, // JS timestamp
                 'status'        => $status,
-                'ticket_status' => $row['status']
+                'ticket_status' => $row['status'],
+                'sla_name'      => $row['sla_name']
             ];
         }
 
