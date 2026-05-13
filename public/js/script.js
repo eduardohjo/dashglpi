@@ -383,6 +383,8 @@ async function loadTicketLists() {
         const response = await fetch(PLUGIN_ROOT + '/ajax/dashboard.php?action=tickets_list');
         const tickets = await response.json();
 
+        const isSlaPaused = (status) => status == 4; // Pendente no GLPI geralmente pausa SLA
+
         const recentBody = document.getElementById('recent-tickets-body');
         if (tickets.length > 0) {
             recentBody.innerHTML = tickets.slice(0, 5).map(ticket => `
@@ -399,7 +401,13 @@ async function loadTicketLists() {
                                 </div>
                             </td>
                             <td>
-                                <span class="table-badge">${escHtml(ticket.category || 'Sem categoria')}</span>
+                                <div class="table-ticket-info">
+                                    <div class="table-ticket-title" style="font-size: 0.8rem;">${escHtml(ticket.category || 'Sem categoria')}</div>
+                                    <div class="table-ticket-id" style="color: var(--primary); font-weight: 600;">
+                                        <i class="fas fa-stopwatch"></i> ${escHtml(ticket.sla_name)}
+                                        ${isSlaPaused(ticket.status) ? '<span class="badge bg-warning text-dark ms-1" style="font-size: 0.6rem;">PAUSADO</span>' : ''}
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 <span class="table-date">${escHtml(ticket.date)}</span>
@@ -431,12 +439,23 @@ async function loadTicketLists() {
                             <td><strong><a href="${DASHGLPI_ROOT}/../../front/ticket.form.php?id=${ticket.id}" target="_blank" style="color: inherit; text-decoration: none;">#${ticket.id}</a></strong></td>
                             <td><a href="${DASHGLPI_ROOT}/../../front/ticket.form.php?id=${ticket.id}" target="_blank" style="color: inherit; text-decoration: none;">${escHtml(ticket.name)}</a></td>
                             <td>
-                                <span class="table-badge" style="background: ${getStatusBg(ticket.status)}; color: ${getStatusColor(ticket.status)}; border: none;">
-                                    ${statusMap[ticket.status] || 'Outro'}
-                                </span>
+                                <div class="d-flex flex-column gap-1">
+                                    <span class="table-badge" style="background: ${getStatusBg(ticket.status)}; color: ${getStatusColor(ticket.status)}; border: none;">
+                                        ${statusMap[ticket.status] || 'Outro'}
+                                    </span>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted);">
+                                        <i class="fas fa-clock"></i> ${escHtml(ticket.sla_name)}
+                                        ${isSlaPaused(ticket.status) ? ' (Pausado)' : ''}
+                                    </div>
+                                </div>
                             </td>
                             <td>${escHtml(ticket.user_name || '-')}</td>
                             <td>${escHtml(ticket.date)}</td>
+                            <td style="text-align: right;">
+                                <a href="${DASHGLPI_ROOT}/../../front/ticket.form.php?id=${ticket.id}" target="_blank" class="table-action">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </a>
+                            </td>
                         </tr>
                     `).join('');
         } else {
@@ -648,17 +667,19 @@ function renderSLAList(items) {
     const container = document.getElementById('slaList');
     if (!container) return;
 
+    const isSlaPaused = (status) => status == 4;
+
     container.innerHTML = items.map(item => `
                 <div class="sla-item ${item.status}">
                     <div class="sla-icon-item ${item.status}">
                         <i class="fas ${item.status === 'critical' ? 'fa-exclamation-triangle' : item.status === 'warning' ? 'fa-clock' : 'fa-check-circle'}"></i>
                     </div>
                     <div class="sla-info">
-                        <div class="sla-title">${item.title}</div>
+                        <div class="sla-title">${item.title} ${isSlaPaused(item.ticket_status) ? '<span class="badge bg-warning text-dark ms-2" style="font-size: 0.6rem; vertical-align: middle;">PAUSADO</span>' : ''}</div>
                         <div class="sla-subtitle">Chamado ${item.ticket}</div>
                     </div>
                     <div class="sla-countdown">
-                        <div class="sla-time ${item.status}" data-deadline="${item.deadline}">--:--</div>
+                        <div class="sla-time ${item.status}" data-deadline="${item.deadline}" data-paused="${isSlaPaused(item.ticket_status)}">--:--</div>
                         <div class="sla-label">Restante</div>
                     </div>
                 </div>
@@ -668,11 +689,17 @@ function renderSLAList(items) {
 function updateSLACountdowns() {
     document.querySelectorAll('.sla-time[data-deadline]').forEach(el => {
         const deadline = parseInt(el.getAttribute('data-deadline'));
+        const isPaused = el.getAttribute('data-paused') === 'true';
         const now = Date.now();
         const diff = deadline - now;
 
         if (diff <= 0) {
             el.textContent = 'VENCIDO';
+            return;
+        }
+
+        if (isPaused) {
+            el.textContent = 'PAUSADO';
             return;
         }
 
@@ -814,6 +841,7 @@ document.addEventListener('click', (e) => {
 // ==================== GAMIFICAÇÃO: RENDER RANKING ====================
 async function renderLeaderboard() {
     const container = document.getElementById('leaderboard-container');
+    const topTechName = document.getElementById('top-tech-name');
     if (!container) return;
 
     try {
@@ -822,7 +850,13 @@ async function renderLeaderboard() {
 
         if (!technicians || technicians.length === 0) {
             container.innerHTML = '<div class="text-center p-5 text-muted">Nenhum chamado finalizado este mês.</div>';
+            if (topTechName) topTechName.textContent = '--';
             return;
+        }
+
+        // Atualiza Técnico do Mês
+        if (topTechName) {
+            topTechName.textContent = technicians[0].name;
         }
 
         const maxPoints = Math.max(...technicians.map(t => t.points)) || 1;
@@ -880,14 +914,19 @@ async function renderLeaderboard() {
                             <span>${tech.tickets} Chamados resolvidos</span>
                         </div>
 
-                        <div style="width: 100%; height: 6px; background: var(--glass-bg); border-radius: 10px; overflow: hidden;">
+                        <div style="width: 100%; height: 8px; background: var(--glass-bg); border-radius: 10px; overflow: hidden; display: flex;">
                             <div style="
                                 width: 0%;
                                 height: 100%;
-                                background: ${tech.color};
-                                border-radius: 10px;
+                                background: var(--success);
                                 transition: width 1s ease-in-out;
-                            " class="progress-bar-anim" data-width="${percent}%"></div>
+                            " class="progress-bar-anim" data-width="${(tech.tickets * 10 / maxPoints * 100)}%" title="Chamados: ${tech.tickets * 10} pts"></div>
+                            <div style="
+                                width: 0%;
+                                height: 100%;
+                                background: var(--primary);
+                                transition: width 1s ease-in-out;
+                            " class="progress-bar-anim" data-width="${(tech.sla_ok * 5 / maxPoints * 100)}%" title="SLA: ${tech.sla_ok * 5} pts"></div>
                         </div>
                     </div>
                 </div>

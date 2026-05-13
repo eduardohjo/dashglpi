@@ -190,10 +190,12 @@ class PluginDashglpiDashboard
 
         $iterator = $DB->request([
             'SELECT' => [
+                'u.id',
                 new QueryExpression("TRIM(CONCAT(IFNULL(`u`.`firstname`, `u`.`name`), ' ', IFNULL(`u`.`realname`, ''))) AS `name`"),
                 new QueryExpression("UPPER(CONCAT(LEFT(IFNULL(`u`.`firstname`, `u`.`name`), 1), LEFT(IFNULL(`u`.`realname`, ''), 1))) AS `avatar`"),
                 QueryFunction::count('t.id', false, 'tickets'),
-                new QueryExpression('SUM(CASE WHEN t.time_to_resolve >= t.solvedate THEN 15 ELSE 10 END) AS `points`'),
+                new QueryExpression('SUM(CASE WHEN t.time_to_resolve IS NOT NULL AND t.time_to_resolve >= t.solvedate THEN 1 ELSE 0 END) AS `sla_ok`'),
+                new QueryExpression('SUM(CASE WHEN t.time_to_resolve IS NOT NULL AND t.time_to_resolve >= t.solvedate THEN 15 ELSE 10 END) AS `points`'),
             ],
             'FROM'  => 'glpi_tickets AS t',
             'INNER JOIN' => [
@@ -218,7 +220,7 @@ class PluginDashglpiDashboard
                 new QueryExpression('`t`.`solvedate` >= DATE_FORMAT(NOW(), "%Y-%m-01")'),
             ], $entityCriteria),
             'GROUPBY' => ['u.id', 'u.firstname', 'u.name', 'u.realname'],
-            'ORDER'   => ['points DESC'],
+            'ORDER'   => [new QueryExpression('points DESC')],
             'LIMIT'   => 20,
         ]);
 
@@ -226,11 +228,16 @@ class PluginDashglpiDashboard
         $ranking = [];
 
         foreach ($iterator as $key => $row) {
+            $tickets = (int) $row['tickets'];
+            $sla_ok  = (int) $row['sla_ok'];
+            $points  = (int) $row['points'];
+
             $item = [
                 'name'    => $row['name'],
                 'avatar'  => !empty($row['avatar']) ? $row['avatar'] : 'T',
-                'tickets' => (int) $row['tickets'],
-                'points'  => (int) $row['points'],
+                'tickets' => $tickets,
+                'sla_ok'  => $sla_ok,
+                'points'  => $points,
                 'color'   => $colors[$key % count($colors)],
             ];
             $ranking[] = $item;
@@ -250,9 +257,10 @@ class PluginDashglpiDashboard
 
         $iterator = $DB->request([
             'SELECT' => [
-                't.id', 't.name', 't.status', 't.date', 't.priority',
+                't.id', 't.name', 't.status', 't.date', 't.priority', 't.time_to_resolve',
                 new QueryExpression("IFNULL(`c`.`completename`, 'Sem Categoria') AS `category`"),
                 new QueryExpression("IFNULL(`u`.`name`, 'N/A') AS `user_name`"),
+                new QueryExpression("IFNULL(`s`.`name`, 'N/A') AS `sla_name`"),
             ],
             'FROM' => 'glpi_tickets AS t',
             'LEFT JOIN' => [
@@ -268,6 +276,12 @@ class PluginDashglpiDashboard
                         't' => 'users_id_recipient',
                     ],
                 ],
+                'glpi_slas AS s' => [
+                    'ON' => [
+                        's' => 'id',
+                        't' => 'slas_id_ttr'
+                    ]
+                ]
             ],
             'WHERE' => array_merge([
                 't.status'     => [1, 2, 3, 4],
@@ -316,12 +330,11 @@ class PluginDashglpiDashboard
 
         // Lista de próximos ao vencimento
         $iterator = $DB->request([
-            'SELECT' => ['id', 'name', 'time_to_resolve'],
+            'SELECT' => ['id', 'name', 'time_to_resolve', 'status'],
             'FROM'   => 'glpi_tickets',
             'WHERE'  => array_merge([
                 'NOT' => ['status' => [5, 6]],
                 ['NOT' => ['time_to_resolve' => null]],
-                new QueryExpression('`glpi_tickets`.`time_to_resolve` > NOW()'),
             ], $entityCriteria),
             'ORDER' => ['time_to_resolve ASC'],
             'LIMIT' => 10,
@@ -338,11 +351,12 @@ class PluginDashglpiDashboard
             }
 
             $items[] = [
-                'id'       => $row['id'],
-                'title'    => $row['name'],
-                'ticket'   => '#' . $row['id'],
-                'deadline' => strtotime($row['time_to_resolve']) * 1000, // JS timestamp
-                'status'   => $status
+                'id'            => $row['id'],
+                'title'         => $row['name'],
+                'ticket'        => '#' . $row['id'],
+                'deadline'      => strtotime($row['time_to_resolve']) * 1000, // JS timestamp
+                'status'        => $status,
+                'ticket_status' => $row['status']
             ];
         }
 

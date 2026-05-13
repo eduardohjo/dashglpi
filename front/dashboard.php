@@ -379,6 +379,7 @@ if (empty($userInitials)) {
                                 <th>Status</th>
                                 <th>Técnico</th>
                                 <th>Data</th>
+                                <th style="text-align: right;">Ação</th>
                             </tr>
                         </thead>
                         <tbody id="tickets-full-body"></tbody>
