@@ -40,7 +40,14 @@ try {
             break;
 
         case 'sla_data':
-            echo json_encode(PluginDashglpiDashboard::getSLAData());
+            $hours = (int) ($_GET['hours'] ?? 24);
+            echo json_encode(PluginDashglpiDashboard::getSLAData($hours));
+            break;
+
+        case 'sla_tickets':
+            $type  = $_GET['type'] ?? '';
+            $hours = (int) ($_GET['hours'] ?? 24);
+            echo json_encode(PluginDashglpiDashboard::getSLATickets($type, $hours));
             break;
 
         case 'get_notifications':

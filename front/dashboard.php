@@ -290,27 +290,36 @@ if (empty($userInitials)) {
                         <span>Acompanhamento em tempo real</span>
                     </div>
                 </div>
+                <div class="header-actions">
+                    <select id="sla-time-filter" class="chart-select" onchange="updateSLAData()">
+                        <option value="8">Próximas 8h</option>
+                        <option value="24" selected>Próximas 24h</option>
+                        <option value="48">Próximas 48h</option>
+                        <option value="72">Próximas 72h</option>
+                        <option value="168">Esta Semana</option>
+                    </select>
+                </div>
             </header>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px;">
-                <div class="glass-card" style="padding: 32px; text-align: center;">
+                <div class="glass-card" style="padding: 32px; text-align: center; cursor: pointer;" onclick="openSLAModal('vencidos')">
                     <div style="font-size: 3rem; margin-bottom: 12px;">
-                        <i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>
+                        <i class="fas fa-calendar-times" style="color: var(--danger);"></i>
                     </div>
-                    <div style="font-size: 2.5rem; font-weight: 800; color: var(--danger); margin-bottom: 8px;" id="slaCritical">0</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Crítico</div>
+                    <div style="font-size: 2.5rem; font-weight: 800; color: var(--danger); margin-bottom: 8px;" id="slaVencidos">0</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Atrasados</div>
                 </div>
-                <div class="glass-card" style="padding: 32px; text-align: center;">
+                <div class="glass-card" style="padding: 32px; text-align: center; cursor: pointer;" onclick="openSLAModal('pausados')">
                     <div style="font-size: 3rem; margin-bottom: 12px;">
-                        <i class="fas fa-clock" style="color: var(--warning);"></i>
+                        <i class="fas fa-pause-circle" style="color: var(--warning);"></i>
                     </div>
-                    <div style="font-size: 2.5rem; font-weight: 800; color: var(--warning); margin-bottom: 8px;" id="slaWarning">0</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Atenção</div>
+                    <div style="font-size: 2.5rem; font-weight: 800; color: var(--warning); margin-bottom: 8px;" id="slaPausados">0</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Pausados</div>
                 </div>
-                <div class="glass-card" style="padding: 32px; text-align: center;">
+                <div class="glass-card" style="padding: 32px; text-align: center; cursor: pointer;" onclick="openSLAModal('no_prazo')">
                     <div style="font-size: 3rem; margin-bottom: 12px;">
-                        <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                        <i class="fas fa-calendar-check" style="color: var(--success);"></i>
                     </div>
-                    <div style="font-size: 2.5rem; font-weight: 800; color: var(--success); margin-bottom: 8px;" id="slaOk">0</div>
+                    <div style="font-size: 2.5rem; font-weight: 800; color: var(--success); margin-bottom: 8px;" id="slaNoPrazo">0</div>
                     <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">No Prazo</div>
                 </div>
             </div>
@@ -466,6 +475,38 @@ if (empty($userInitials)) {
             <div class="cyber-footer">
                 <div class="cyber-scanline"></div>
                 <span>SECURE CONNECTION ESTABLISHED // ACCESS GRANTED</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLA Detail Modal -->
+    <div id="sla-modal" class="cyber-overlay">
+        <div class="cyber-hud" style="width: 1000px; max-width: 95%;">
+            <button class="cyber-close" onclick="closeSLAModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="cyber-header">
+                <h2 id="sla-modal-title" class="cyber-glitch-text">DETALHES SLA</h2>
+                <div class="cyber-sub" id="sla-modal-sub">LISTAGEM DE CHAMADOS</div>
+            </div>
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Técnico</th>
+                            <th>SLA</th>
+                            <th>Vencimento</th>
+                            <th style="text-align: right;">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sla-modal-body"></tbody>
+                </table>
+            </div>
+            <div class="cyber-footer">
+                <div class="cyber-scanline"></div>
+                <span>SLA STATUS MONITOR // DATA RETRIEVED SUCCESSFULLY</span>
             </div>
         </div>
     </div>

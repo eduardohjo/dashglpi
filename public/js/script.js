@@ -652,8 +652,9 @@ function initSLAMonitor() {
 }
 
 async function updateSLAData() {
+    const hours = document.getElementById('sla-time-filter')?.value || 24;
     try {
-        const response = await fetch(PLUGIN_ROOT + '/ajax/dashboard.php?action=sla_data');
+        const response = await fetch(PLUGIN_ROOT + '/ajax/dashboard.php?action=sla_data&hours=' + hours);
         const data = await response.json();
 
         renderSLAList(data.items);
@@ -712,9 +713,9 @@ function updateSLACountdowns() {
 }
 
 function updateSLASummary(summary) {
-    setVal('slaCritical', summary.critical);
-    setVal('slaWarning', summary.warning);
-    setVal('slaOk', summary.ok);
+    setVal('slaVencidos', summary.vencidos);
+    setVal('slaPausados', summary.pausados);
+    setVal('slaNoPrazo', summary.no_prazo);
 }
 
 // ==================== NOTIFICATIONS ====================
@@ -945,6 +946,61 @@ async function renderLeaderboard() {
         container.innerHTML = '<div class="text-center p-5 text-danger">Erro de conexão com a API.</div>';
     }
 }
+
+// ==================== SLA MODAL ====================
+async function openSLAModal(type) {
+    const hours = document.getElementById('sla-time-filter')?.value || 24;
+    const titles = {
+        'vencidos': 'CHAMADOS ATRASADOS',
+        'pausados': 'CHAMADOS PAUSADOS',
+        'no_prazo': 'CHAMADOS NO PRAZO'
+    };
+
+    document.getElementById('sla-modal-title').textContent = titles[type];
+    const body = document.getElementById('sla-modal-body');
+    body.innerHTML = '<tr><td colspan="6" class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x"></i></td></tr>';
+
+    document.getElementById('sla-modal').classList.add('active');
+
+    try {
+        const response = await fetch(PLUGIN_ROOT + '/ajax/dashboard.php?action=sla_tickets&type=' + type + '&hours=' + hours);
+        const tickets = await response.json();
+
+        if (tickets.length === 0) {
+            body.innerHTML = '<tr><td colspan="6" class="text-center p-5">Nenhum chamado encontrado.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = tickets.map(ticket => `
+            <tr>
+                <td><strong>#${ticket.id}</strong></td>
+                <td>${escHtml(ticket.name)}</td>
+                <td>${escHtml(ticket.tech_name)}</td>
+                <td><span class="table-badge">${escHtml(ticket.sla_name)}</span></td>
+                <td class="${type === 'vencidos' ? 'text-danger' : 'text-success'}">${escHtml(ticket.time_to_resolve)}</td>
+                <td style="text-align: right;">
+                    <a href="${DASHGLPI_ROOT}/../../front/ticket.form.php?id=${ticket.id}" target="_blank" class="table-action">
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error fetching SLA tickets:', error);
+        body.innerHTML = '<tr><td colspan="6" class="text-center p-5 text-danger">Erro ao carregar dados.</td></tr>';
+    }
+}
+
+function closeSLAModal() {
+    document.getElementById('sla-modal').classList.remove('active');
+}
+
+// Fechar modal SLA ao clicar fora
+document.addEventListener('click', (e) => {
+    if (e.target.id === 'sla-modal') {
+        closeSLAModal();
+    }
+});
 
 // ==================== LAYOUT STUBS ====================
 function saveLayout() {

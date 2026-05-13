@@ -300,35 +300,36 @@ class PluginDashglpiDashboard
     }
 
     /**
-     * Retorna dados de SLA reais
+     * Retorna dados de SLA reais com suporte a filtro de horas
      */
-    public static function getSLAData(): array
+    public static function getSLAData(int $hours = 24): array
     {
         global $DB;
 
         $entityCriteria = getEntitiesRestrictCriteria('glpi_tickets');
 
-        // Categorias de SLA (Alinhadas com a lógica visual do frontend)
-        $critical = self::countTickets($DB, $entityCriteria, [
+        // 1. Vencidos (Breached)
+        $vencidos = self::countTickets($DB, $entityCriteria, [
             'NOT' => ['status' => [5, 6]],
             ['NOT' => ['time_to_resolve' => null]],
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` < NOW() + INTERVAL 1 HOUR'),
+            new QueryExpression('`glpi_tickets`.`time_to_resolve` < NOW()'),
         ]);
 
-        $warning = self::countTickets($DB, $entityCriteria, [
-            'NOT' => ['status' => [5, 6]],
+        // 2. Pausados (Status Pendente)
+        $pausados = self::countTickets($DB, $entityCriteria, [
+            'status' => 4,
             ['NOT' => ['time_to_resolve' => null]],
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` >= NOW() + INTERVAL 1 HOUR'),
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` <= NOW() + INTERVAL 4 HOUR'),
         ]);
 
-        $ok = self::countTickets($DB, $entityCriteria, [
-            'NOT' => ['status' => [5, 6]],
+        // 3. No Prazo (Dentre os próximos $hours horas)
+        $noPrazo = self::countTickets($DB, $entityCriteria, [
+            'NOT' => ['status' => [4, 5, 6]],
             ['NOT' => ['time_to_resolve' => null]],
-            new QueryExpression('`glpi_tickets`.`time_to_resolve` > NOW() + INTERVAL 4 HOUR'),
+            new QueryExpression('`glpi_tickets`.`time_to_resolve` >= NOW()'),
+            new QueryExpression("`glpi_tickets`.`time_to_resolve` <= NOW() + INTERVAL $hours HOUR"),
         ]);
 
-        // Lista de próximos ao vencimento
+        // Top 10 próximos ao vencimento
         $iterator = $DB->request([
             'SELECT' => [
                 't.id', 't.name', 't.time_to_resolve', 't.status',
@@ -343,6 +344,7 @@ class PluginDashglpiDashboard
             'WHERE'  => array_merge([
                 'NOT' => ['t.status' => [5, 6]],
                 ['NOT' => ['t.time_to_resolve' => null]],
+                new QueryExpression('`t`.`time_to_resolve` >= NOW()'),
             ], getEntitiesRestrictCriteria('t')),
             'ORDER' => ['t.time_to_resolve ASC'],
             'LIMIT' => 10,
@@ -362,7 +364,7 @@ class PluginDashglpiDashboard
                 'id'            => $row['id'],
                 'title'         => $row['name'],
                 'ticket'        => '#' . $row['id'],
-                'deadline'      => strtotime($row['time_to_resolve']) * 1000, // JS timestamp
+                'deadline'      => strtotime($row['time_to_resolve']) * 1000,
                 'status'        => $status,
                 'ticket_status' => $row['status'],
                 'sla_name'      => $row['sla_name']
@@ -371,12 +373,71 @@ class PluginDashglpiDashboard
 
         return [
             'summary' => [
-                'critical' => (int) $critical,
-                'warning'  => (int) $warning,
-                'ok'       => (int) $ok,
+                'vencidos' => (int) $vencidos,
+                'pausados' => (int) $pausados,
+                'no_prazo' => (int) $noPrazo,
             ],
             'items' => $items
         ];
+    }
+
+    /**
+     * Retorna lista detalhada de chamados por status de SLA para o modal
+     */
+    public static function getSLATickets(string $type, int $hours = 24): array
+    {
+        global $DB;
+        $entityCriteria = getEntitiesRestrictCriteria('t');
+        $where = ['NOT' => ['t.status' => [5, 6]], ['NOT' => ['t.time_to_resolve' => null]]];
+
+        switch ($type) {
+            case 'vencidos':
+                $where[] = new QueryExpression('`t`.`time_to_resolve` < NOW()');
+                break;
+            case 'pausados':
+                $where['t.status'] = 4;
+                break;
+            case 'no_prazo':
+                $where['NOT'] = ['t.status' => [4, 5, 6]];
+                $where[] = new QueryExpression('`t`.`time_to_resolve` >= NOW()');
+                $where[] = new QueryExpression("`t`.`time_to_resolve` <= NOW() + INTERVAL $hours HOUR");
+                break;
+        }
+
+        $iterator = $DB->request([
+            'SELECT' => [
+                't.id', 't.name', 't.time_to_resolve', 't.status',
+                new QueryExpression("IFNULL(`s`.`name`, 'Sem SLA') AS `sla_name`"),
+                new QueryExpression("IFNULL(`u`.`name`, 'Sem técnico') AS `tech_name`")
+            ],
+            'FROM'   => 'glpi_tickets AS t',
+            'LEFT JOIN' => [
+                'glpi_slas AS s' => [
+                    'ON' => ['s' => 'id', 't' => 'slas_id_ttr']
+                ],
+                'glpi_tickets_users AS tu' => [
+                    'ON' => [
+                        'tu' => 'tickets_id',
+                        't'  => 'id'
+                    ]
+                ],
+                'glpi_users AS u' => [
+                    'ON' => [
+                        'u'  => 'id',
+                        'tu' => 'users_id'
+                    ]
+                ]
+            ],
+            'WHERE' => array_merge($where, $entityCriteria, ['tu.type' => 2]),
+            'ORDER' => ['t.time_to_resolve ASC'],
+            'LIMIT' => 100
+        ]);
+
+        $tickets = [];
+        foreach ($iterator as $row) {
+            $tickets[] = $row;
+        }
+        return $tickets;
     }
 
     /**
